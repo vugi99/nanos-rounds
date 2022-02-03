@@ -1,2 +1,2 @@
 # nanos-rounds
-A framework to create gamemodes
+# [Wiki](https://github.com/vugi99/nanos-rounds/wiki)

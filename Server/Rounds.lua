@@ -175,7 +175,11 @@ function SpawnPlayer(ply, respawn)
         elseif ROUNDS_CONFIG.SPAWN_POSSESS[1] == "CAMERA" then
             ply:SetCameraLocation(spawn[1])
             ply:SetCameraRotation(spawn[2])
+        elseif ROUNDS_CONFIG.SPAWN_POSSESS[1] == "TRANSLATE_CAMERA" then
+            ply:TranslateCameraTo(spawn[1], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
+            ply:RotateCameraTo(spawn[2], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
         end
+
         table.insert(PLAYERS_REMAINING, ply)
         if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
             table.insert(TEAMS_PLAYERS[team], ply)

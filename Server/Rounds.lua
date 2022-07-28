@@ -4,9 +4,12 @@ WAITING_PLAYERS = {}
 PLAYERS_REMAINING = {}
 TEAMS_PLAYERS = {}
 
+TEAMS_FOR_THIS_ROUND = nil
+
 ROUND_RUNNING = false
 
-local ROUND_RESTART_TIMEOUT
+ROUND_RESTART_TIMEOUT = nil
+LOBBY_TIMEOUT = nil
 
 local Remaining_Spawns = {}
 
@@ -16,10 +19,18 @@ local function table_count(T)
     return count
 end
 
+local function ROUNDS_CALL_EVENT(event, ...)
+    if ROUNDS_CONFIG.ROUNDS_DEBUG then
+        print("Rounds Debug : ", event, ...)
+    end
+    Events.Call(event, ...)
+end
+
 function RoundEnd()
     if ROUND_RUNNING then
-        Events.Call("RoundEnding")
+        ROUNDS_CALL_EVENT("RoundEnding")
         ROUND_RUNNING = false
+        TEAMS_FOR_THIS_ROUND = nil
 
         WAITING_PLAYERS = {}
         PLAYERS_REMAINING = {}
@@ -41,9 +52,19 @@ function RoundEnd()
             if ROUNDS_CONFIG.ROUNDS_INTERVAL_ms then
                 ROUND_RESTART_TIMEOUT = Timer.SetTimeout(function()
                     if RoundStartCondition() then
-                        RoundStart()
+                        if not ROUNDS_CONFIG.LOBBY_CONFIG then
+                            RoundStart()
+                        else
+                            LobbyStart()
+                        end
                     end
                 end, ROUNDS_CONFIG.ROUNDS_INTERVAL_ms)
+            else
+                if not ROUNDS_CONFIG.LOBBY_CONFIG then
+                    RoundStart()
+                else
+                    LobbyStart()
+                end
             end
         end
 
@@ -55,6 +76,66 @@ function RESET_SPAWNS_TABLE()
     Remaining_Spawns = {}
 end
 
+function PlayerEnterTeam(ply)
+    local team
+    if (ROUNDS_CONFIG.ROUND_TEAMS[1] == "AUTO_BALANCED" or (ROUNDS_CONFIG.ROUND_TEAMS[1] == "PASSED_TEAMS" and ROUNDS_CONFIG.ROUND_TEAMS[4] and not TEAMS_FOR_THIS_ROUND)) then
+        for i = 1, table_count(ROUNDS_CONFIG.ROUND_TEAMS[3]) do
+            table.insert(TEAMS_PLAYERS, {})
+        end
+
+        local smaller_count
+        for i, v in ipairs(TEAMS_PLAYERS) do
+            local count = table_count(v)
+            if (not smaller_count or smaller_count > count) then
+                team = i
+                smaller_count = count
+            end
+        end
+    elseif ROUNDS_CONFIG.ROUND_TEAMS[1] == "PASSED_TEAMS" then
+        if TEAMS_FOR_THIS_ROUND and type(TEAMS_FOR_THIS_ROUND) == "table" then
+            for i = 1, table_count(TEAMS_FOR_THIS_ROUND) do
+                table.insert(TEAMS_PLAYERS, {})
+            end
+        else
+            error("Rounds : wrong or nothing passed into TEAMS_FOR_THIS_ROUND")
+        end
+
+        for i, v in ipairs(TEAMS_FOR_THIS_ROUND) do
+            for i2, v2 in ipairs(v) do
+                if v2 == ply then
+                    team = i
+                    break
+                end
+            end
+        end
+    end
+
+    if team then
+        table.insert(TEAMS_PLAYERS[team], ply)
+        ply:SetValue("PlayerTeam", team, true)
+    end
+end
+
+function GenerateTeamsTables()
+    if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
+        TEAMS_PLAYERS = {}
+
+        ROUNDS_CALL_EVENT("ROUND_PASS_TEAMS")
+
+        for k, v in pairs(PLAYERS_JOINED) do
+            PlayerEnterTeam(v)
+        end
+    end
+end
+
+function SpawnEveryone()
+    RESET_SPAWNS_TABLE()
+    for k, v in pairs(PLAYERS_JOINED) do
+        SpawnPlayer(v)
+    end
+    RESET_SPAWNS_TABLE()
+end
+
 function RoundStart()
     if not ROUND_RUNNING then
         if ROUND_RESTART_TIMEOUT then
@@ -63,21 +144,64 @@ function RoundStart()
         end
         WAITING_PLAYERS = {}
         if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
-            TEAMS_PLAYERS = {}
-            for i = 1, table_count(ROUNDS_CONFIG.ROUND_TEAMS) do
-                table.insert(TEAMS_PLAYERS, {})
+            if ROUNDS_CONFIG.ROUND_TEAMS[2] == "ROUNDSTART_GENERATION" then
+                GenerateTeamsTables()
             end
         end
 
         ROUND_RUNNING = true
 
-        RESET_SPAWNS_TABLE()
-        for k, v in pairs(PLAYERS_JOINED) do
-            SpawnPlayer(v)
+        if ROUNDS_CONFIG.SPAWNING[3] == "ROUNDSTART_SPAWN" then
+            SpawnEveryone()
         end
-        RESET_SPAWNS_TABLE()
 
-        Events.Call("RoundStart")
+        ROUNDS_CALL_EVENT("RoundStart")
+
+        if RoundEndCondition() then
+            RoundEnd()
+        end
+
+        return true
+    end
+end
+
+function LobbyEnd()
+    if not ROUND_RUNNING then
+        if LOBBY_TIMEOUT then
+            Timer.ClearTimeout(LOBBY_TIMEOUT)
+            LOBBY_TIMEOUT = nil
+        end
+
+        ROUNDS_CALL_EVENT("LobbyEnding")
+
+        if RoundStartCondition() then
+            RoundStart()
+        end
+    end
+end
+
+function LobbyStart()
+    if not ROUND_RUNNING then
+        if LOBBY_TIMEOUT then
+            Timer.ClearTimeout(LOBBY_TIMEOUT)
+        end
+
+        if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
+            if ROUNDS_CONFIG.ROUND_TEAMS[2] == "LOBBYSTART_GENERATION" then
+                GenerateTeamsTables()
+            end
+        end
+
+        LOBBY_TIMEOUT = Timer.SetTimeout(function()
+            LOBBY_TIMEOUT = nil
+            LobbyEnd()
+        end, ROUNDS_CONFIG.LOBBY_CONFIG[1])
+
+        if ROUNDS_CONFIG.SPAWNING[3] == "LOBBYSTART_SPAWN" then
+            SpawnEveryone()
+        end
+
+        ROUNDS_CALL_EVENT("LobbyStarted")
 
         return true
     end
@@ -98,7 +222,7 @@ function WaitingAction(ply)
         ply:SetValue("RoundPlaying", false, true)
     end
 
-    Events.Call("RoundPlayerWaiting", ply)
+    ROUNDS_CALL_EVENT("RoundPlayerWaiting", ply)
 end
 
 function GetSpawn(team)
@@ -136,66 +260,53 @@ function GetSpawn(team)
     end
 end
 
-function SpawnPlayer(ply, respawn)
-    if ROUND_RUNNING then
-        local ochar = ply:GetControlledCharacter()
-        if ochar then
-            ochar:Destroy()
-        end
-
-        for k, v in pairs(WAITING_PLAYERS) do
-            if v == ply then
-                table.remove(WAITING_PLAYERS, k)
-                break
-            end
-        end
-
-        local team
-        if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
-            if respawn then
-                team = ply:GetValue("PlayerTeam")
-            else
-                local smaller_count
-                for i, v in ipairs(TEAMS_PLAYERS) do
-                    local count = table_count(v)
-                    if (not smaller_count or smaller_count > count) then
-                        team = i
-                        smaller_count = count
-                    end
-                end
-            end
-        end
-
-        --print(team)
-
-        local spawn = GetSpawn(team)
-        if ROUNDS_CONFIG.SPAWN_POSSESS[1] == "CHARACTER" then
-            local char = Character(spawn[1], spawn[2], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
-            ply:Possess(char)
-        elseif ROUNDS_CONFIG.SPAWN_POSSESS[1] == "CAMERA" then
-            ply:SetCameraLocation(spawn[1])
-            ply:SetCameraRotation(spawn[2])
-        elseif ROUNDS_CONFIG.SPAWN_POSSESS[1] == "TRANSLATE_CAMERA" then
-            ply:TranslateCameraTo(spawn[1], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
-            ply:RotateCameraTo(spawn[2], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
-        end
-
-        table.insert(PLAYERS_REMAINING, ply)
-        if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
-            table.insert(TEAMS_PLAYERS[team], ply)
-            if not respawn then
-                ply:SetValue("PlayerTeam", team, true)
-            end
-        end
-
-        if ROUNDS_CONFIG.WAITING_ACTION[1] == "SPECTATE_REMAINING_PLAYERS" then
-            ply:SetValue("RoundPlaying", true, true)
-        end
-
-        Events.Call("RoundPlayerSpawned", ply)
-        return true
+function SpawnPlayer(ply)
+    local ochar = ply:GetControlledCharacter()
+    if ochar then
+        ochar:Destroy()
     end
-    return false
+
+    for k, v in pairs(WAITING_PLAYERS) do
+        if v == ply then
+            table.remove(WAITING_PLAYERS, k)
+            break
+        end
+    end
+
+    local team
+    if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
+        team = ply:GetValue("PlayerTeam")
+        if not team then
+            PlayerEnterTeam(ply)
+            team = ply:GetValue("PlayerTeam")
+            if not team then
+                return false
+            end
+        end
+    end
+
+    --print(team)
+
+    local spawn = GetSpawn(team)
+    if ROUNDS_CONFIG.SPAWN_POSSESS[1] == "CHARACTER" then
+        local char = Character(spawn[1], spawn[2], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
+        ply:Possess(char)
+    elseif ROUNDS_CONFIG.SPAWN_POSSESS[1] == "CAMERA" then
+        ply:SetCameraLocation(spawn[1])
+        ply:SetCameraRotation(spawn[2])
+    elseif ROUNDS_CONFIG.SPAWN_POSSESS[1] == "TRANSLATE_CAMERA" then
+        ply:TranslateCameraTo(spawn[1], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
+        ply:RotateCameraTo(spawn[2], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
+    end
+
+    table.insert(PLAYERS_REMAINING, ply)
+
+    if ROUNDS_CONFIG.WAITING_ACTION[1] == "SPECTATE_REMAINING_PLAYERS" then
+        ply:SetValue("RoundPlaying", true, true)
+    end
+
+    ROUNDS_CALL_EVENT("RoundPlayerSpawned", ply)
+    return true
 end
 
 function RoundStartCondition()
@@ -218,6 +329,16 @@ function RoundEndCondition()
             if table_count(v) <= ROUNDS_CONFIG.ROUND_END_CONDITION[2][i] then
                 return true
             end
+        end
+    elseif ROUNDS_CONFIG.ROUND_END_CONDITION[1] == "REMAINING_TEAMS" then
+        local teams_remaining = 0
+        for i, v in ipairs(TEAMS_PLAYERS) do
+            if table_count(v) ~= 0 then
+                teams_remaining = teams_remaining + 1
+            end
+        end
+        if teams_remaining <= ROUNDS_CONFIG.ROUND_END_CONDITION[2] then
+            return true
         end
     end
 end
@@ -249,12 +370,12 @@ function RoundsPlayerOut(ply)
 
         table.insert(WAITING_PLAYERS, ply)
 
-        Events.Call("RoundPlayerOut", ply)
+        ROUNDS_CALL_EVENT("RoundPlayerOut", ply)
 
         if ROUNDS_CONFIG.PLAYER_OUT_ACTION[1] == "WAITING" then
             WaitingAction(ply)
         elseif ROUNDS_CONFIG.PLAYER_OUT_ACTION[1] == "RESPAWN" then
-            SpawnPlayer(ply, true)
+            SpawnPlayer(ply)
         end
 
         if RoundEndCondition() then
@@ -267,13 +388,19 @@ function HandlePlayerJoin(ply, more_joining)
     --print("HandlePlayerJoin", ply)
     local players_count = table_count(PLAYERS_JOINED)
     if (not ROUNDS_CONFIG.MAX_PLAYERS or players_count + 1 <= ROUNDS_CONFIG.MAX_PLAYERS) then
+        Events.CallRemote("SyncRoundsConfig", ply, ROUNDS_CONFIG)
+
         table.insert(PLAYERS_JOINED, ply)
-        Events.Call("RoundPlayerJoined", ply)
+        ROUNDS_CALL_EVENT("RoundPlayerJoined", ply)
         if not ROUND_RUNNING then
             if RoundStartCondition() then
                 if not ROUND_RESTART_TIMEOUT then
                     if not more_joining then
-                        RoundStart()
+                        if not ROUNDS_CONFIG.LOBBY_CONFIG then
+                            RoundStart()
+                        else
+                            LobbyStart()
+                        end
                     end
                 end
             end
@@ -289,7 +416,8 @@ function HandlePlayerJoin(ply, more_joining)
     end
 end
 Player.Subscribe("Spawn", HandlePlayerJoin)
-Package.Subscribe("Load", function()
+
+function PackageLoadFunc()
     local count = table_count(Player.GetPairs())
     local i = 0
     for k, v in pairs(Player.GetPairs()) do
@@ -300,7 +428,13 @@ Package.Subscribe("Load", function()
             HandlePlayerJoin(v, true)
         end
     end
-end)
+end
+
+if not ROUNDS_CONFIG.OVERRIDE_LOAD_EVENT then
+    Package.Subscribe("Load", PackageLoadFunc)
+else
+    Events.Subscribe(ROUNDS_CONFIG.OVERRIDE_LOAD_EVENT[1], PackageLoadFunc)
+end
 
 Player.Subscribe("Destroy", function(ply)
     local char = ply:GetControlledCharacter()
@@ -341,13 +475,19 @@ Player.Subscribe("Destroy", function(ply)
     if RoundEndCondition() then
         RoundEnd()
     end
+
+    if LOBBY_TIMEOUT then
+        if not RoundStartCondition() then
+            LobbyEnd()
+        end
+    end
 end)
 
 Character.Subscribe("Death", function(char, ...)
     local ply = char:GetPlayer()
     if ply then
         if ROUNDS_CONFIG.PLAYER_OUT_CONDITION[1] == "DEATH" then
-            Events.Call("RoundPlayerOutDeath", char, ...)
+            ROUNDS_CALL_EVENT("RoundPlayerOutDeath", char, ...)
             RoundsPlayerOut(ply)
         end
     end

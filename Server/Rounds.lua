@@ -79,10 +79,6 @@ end
 function PlayerEnterTeam(ply)
     local team
     if (ROUNDS_CONFIG.ROUND_TEAMS[1] == "AUTO_BALANCED" or (ROUNDS_CONFIG.ROUND_TEAMS[1] == "PASSED_TEAMS" and ROUNDS_CONFIG.ROUND_TEAMS[4] and not TEAMS_FOR_THIS_ROUND)) then
-        for i = 1, table_count(ROUNDS_CONFIG.ROUND_TEAMS[3]) do
-            table.insert(TEAMS_PLAYERS, {})
-        end
-
         local smaller_count
         for i, v in ipairs(TEAMS_PLAYERS) do
             local count = table_count(v)
@@ -92,14 +88,6 @@ function PlayerEnterTeam(ply)
             end
         end
     elseif ROUNDS_CONFIG.ROUND_TEAMS[1] == "PASSED_TEAMS" then
-        if TEAMS_FOR_THIS_ROUND and type(TEAMS_FOR_THIS_ROUND) == "table" then
-            for i = 1, table_count(TEAMS_FOR_THIS_ROUND) do
-                table.insert(TEAMS_PLAYERS, {})
-            end
-        else
-            error("Rounds : wrong or nothing passed into TEAMS_FOR_THIS_ROUND")
-        end
-
         for i, v in ipairs(TEAMS_FOR_THIS_ROUND) do
             for i2, v2 in ipairs(v) do
                 if v2 == ply then
@@ -121,6 +109,20 @@ function GenerateTeamsTables()
         TEAMS_PLAYERS = {}
 
         ROUNDS_CALL_EVENT("ROUND_PASS_TEAMS")
+
+        if (ROUNDS_CONFIG.ROUND_TEAMS[1] == "AUTO_BALANCED" or (ROUNDS_CONFIG.ROUND_TEAMS[1] == "PASSED_TEAMS" and ROUNDS_CONFIG.ROUND_TEAMS[4] and not TEAMS_FOR_THIS_ROUND)) then
+            for i = 1, table_count(ROUNDS_CONFIG.ROUND_TEAMS[3]) do
+                table.insert(TEAMS_PLAYERS, {})
+            end
+        elseif ROUNDS_CONFIG.ROUND_TEAMS[1] == "PASSED_TEAMS" then
+            if TEAMS_FOR_THIS_ROUND and type(TEAMS_FOR_THIS_ROUND) == "table" then
+                for i = 1, table_count(TEAMS_FOR_THIS_ROUND) do
+                    table.insert(TEAMS_PLAYERS, {})
+                end
+            else
+                error("Rounds : wrong or nothing passed into TEAMS_FOR_THIS_ROUND")
+            end
+        end
 
         for k, v in pairs(PLAYERS_JOINED) do
             PlayerEnterTeam(v)

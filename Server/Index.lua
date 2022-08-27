@@ -3,7 +3,7 @@ ROUNDS_CONFIG = nil
 
 function INIT_ROUNDS(Config_Tbl)
     ROUNDS_CONFIG = Config_Tbl
-    if type(ROUNDS_CONFIG.ROUND_TEAMS[1]) == "table" then
+    if (ROUNDS_CONFIG.ROUND_TEAMS and type(ROUNDS_CONFIG.ROUND_TEAMS[1]) == "table") then
         local new_tbl = {"AUTO_BALANCED", "ROUNDSTART_GENERATION", ROUNDS_CONFIG.ROUND_TEAMS}
         ROUNDS_CONFIG.ROUND_TEAMS = new_tbl
         Package.Warn("Using deprecated ROUND_TEAMS structure, please update it")

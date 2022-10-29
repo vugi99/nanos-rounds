@@ -21,6 +21,14 @@ function INIT_ROUNDS(Config_Tbl)
         end
     end
 
+    if ROUNDS_CONFIG.PLAYER_OUT_CONDITION then
+        if ROUNDS_CONFIG.PLAYER_OUT_CONDITION[1] == "DEATH" then
+            if not ROUNDS_CONFIG.PLAYER_OUT_CONDITION[2] then
+                ROUNDS_CONFIG.PLAYER_OUT_CONDITION[2] = 0
+            end
+        end
+    end
+
     Package.Require("Rounds.lua")
 
     return true

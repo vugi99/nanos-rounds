@@ -1,19 +1,19 @@
 # package configurations
 [package]
     # package name
-    name =                 "rounds"
+    name =                  "rounds"
     # contributors
-    author =               "Voltaism"
+    author =                "Voltaism"
     # version
-    version =              "0.2.2"
+    version =               "0.2.3"
     # image URL
-    image =                "https://i.imgur.com/1BG8UW1.png"
+    image =                 "https://i.imgur.com/1BG8UW1.png"
     # package type: 'script' (normal package), 'game-mode' (unique package - can only load one at a time), 'library' (doesn't start a Lua VM) or 'loading-screen' (special package for loading screen)
-    type =                 "library"
+    type =                  "library"
     # whether to force the custom map script to do not load
-    force_no_map_script =  false
+    force_no_map_script =   false
     # auto destroy all entities spawned by this package when it unloads
-    auto_cleanup =         true
+    auto_cleanup =          true
     # packages requirements
     packages_requirements = [
         

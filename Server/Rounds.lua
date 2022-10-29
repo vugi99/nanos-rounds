@@ -135,7 +135,7 @@ function SpawnEveryone()
     for k, v in pairs(PLAYERS_JOINED) do
         SpawnPlayer(v)
     end
-    RESET_SPAWNS_TABLE()
+    --RESET_SPAWNS_TABLE()
 end
 
 function RoundStart()
@@ -490,7 +490,15 @@ Character.Subscribe("Death", function(char, ...)
     if ply then
         if ROUNDS_CONFIG.PLAYER_OUT_CONDITION[1] == "DEATH" then
             ROUNDS_CALL_EVENT("RoundPlayerOutDeath", char, ...)
-            RoundsPlayerOut(ply)
+            if ROUNDS_CONFIG.PLAYER_OUT_CONDITION[2] <= 0 then
+                RoundsPlayerOut(ply)
+            else
+                Timer.SetTimeout(function()
+                    if ply:IsValid() then
+                        RoundsPlayerOut(ply)
+                    end
+                end, ROUNDS_CONFIG.PLAYER_OUT_CONDITION[2])
+            end
         end
     end
 end)

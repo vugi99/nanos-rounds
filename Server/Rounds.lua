@@ -51,6 +51,7 @@ function RoundEnd()
         if RoundStartCondition() then
             if ROUNDS_CONFIG.ROUNDS_INTERVAL_ms then
                 ROUND_RESTART_TIMEOUT = Timer.SetTimeout(function()
+                    ROUND_RESTART_TIMEOUT = nil
                     if RoundStartCondition() then
                         if not ROUNDS_CONFIG.LOBBY_CONFIG then
                             RoundStart()

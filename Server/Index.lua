@@ -1,13 +1,10 @@
 
-ROUNDS_CONFIG = nil
+Package.Export("ROUNDS_CONFIG", nil)
+
+ROUNDS_Special_Serverside_Config = {}
 
 function INIT_ROUNDS(Config_Tbl)
     ROUNDS_CONFIG = Config_Tbl
-    if (ROUNDS_CONFIG.ROUND_TEAMS and type(ROUNDS_CONFIG.ROUND_TEAMS[1]) == "table") then
-        local new_tbl = {"AUTO_BALANCED", "ROUNDSTART_GENERATION", ROUNDS_CONFIG.ROUND_TEAMS}
-        ROUNDS_CONFIG.ROUND_TEAMS = new_tbl
-        Package.Warn("Using deprecated ROUND_TEAMS structure, please update it")
-    end
 
     if ROUNDS_CONFIG.SPAWN_POSSESS then
         if not ROUNDS_CONFIG.SPAWN_POSSESS[2] then
@@ -29,7 +26,15 @@ function INIT_ROUNDS(Config_Tbl)
         end
     end
 
+    if ROUNDS_CONFIG.ROUND_TEAMS then
+        if type(ROUNDS_CONFIG.ROUND_TEAMS[3]) == "function" then
+            ROUNDS_Special_Serverside_Config.teams_count_func = ROUNDS_CONFIG.ROUND_TEAMS[3]
+            ROUNDS_CONFIG.ROUND_TEAMS[3] = nil
+        end
+    end
+
     Package.Require("Rounds.lua")
 
     return true
 end
+Package.Export("INIT_ROUNDS", INIT_ROUNDS)

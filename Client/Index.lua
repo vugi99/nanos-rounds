@@ -1,10 +1,10 @@
 
-ROUNDS_CONFIG = nil
+Package.Export("ROUNDS_CONFIG", nil)
 
 Package.Subscribe("Load", function()
     Package.Require("Spec.lua")
 end)
 
-Events.Subscribe("SyncRoundsConfig", function(config)
+Events.SubscribeRemote("SyncRoundsConfig", function(config)
     ROUNDS_CONFIG = config
 end)

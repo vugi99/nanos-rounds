@@ -7,7 +7,7 @@ function GetResetPlyID(old_ply_id, prev_ply)
     local selected_ply_id
     local selected_ply
     for k, v in pairs(Player.GetPairs()) do
-        if v ~= Client.GetLocalPlayer() then
+        if (v ~= Client.GetLocalPlayer() and not v.BOT) then
             if v:GetID() ~= old_ply_id then
                 local playing = v:GetValue("RoundPlaying")
                 if playing then
@@ -30,7 +30,7 @@ function GetNewPlayerToSpec(old_ply_id, prev_ply)
     local new_ply
     local new_ply_id
     for k, v in pairs(Player.GetPairs()) do
-        if v ~= Client.GetLocalPlayer() then
+        if (v ~= Client.GetLocalPlayer() and not v.BOT) then
             local playing = v:GetValue("RoundPlaying")
             if playing then
                 if (Team == v:GetValue("PlayerTeam") or ROUNDS_CONFIG.WAITING_ACTION[2]) then

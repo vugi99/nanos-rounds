@@ -29,46 +29,9 @@ local function ROUNDS_CALL_EVENT(event, ...)
     Events.Call(event, ...)
 end
 
-local function Random_Reorder_Table(tbl)
-    local maxn = 0
-    for k, _ in pairs(tbl) do
-        if k > maxn then
-            maxn = k
-        end
-    end
-
-    -- Shrink table filling holes
-    local attach_i = 1
-    for i = 1, maxn do
-        if tbl[i] then
-            if attach_i ~= i then
-                tbl[attach_i] = tbl[i]
-                tbl[i] = nil
-            end
-            attach_i = attach_i+1
-        end
-    end
-
-    local c = attach_i - 1 -- last index is attach_i-1
-    for i, v in ipairs(tbl) do
-        local tmp = v
-        local r = math.random(c)
-        tbl[i] = tbl[r]
-        tbl[r] = tmp
-    end
-end
-
-local function shuffle(tbl)
-    for i = #tbl, 2, -1 do
-      local j = math.random(i)
-      tbl[i], tbl[j] = tbl[j], tbl[i]
-    end
-    return tbl
-end
-
 local function SetRoundsSleeping(bool)
     if bool ~= ROUNDS_SLEEPING then
-        ROUNDS_SLEEPING = bool
+        Package.Export("ROUNDS_SLEEPING", bool)
         ROUNDS_CALL_EVENT("Rounds_Sleeping", bool)
     end
 end
@@ -78,13 +41,13 @@ end
 function RoundEnd()
     if ROUND_RUNNING then
         ROUNDS_CALL_EVENT("RoundEnding")
-        ROUND_RUNNING = false
-        TEAMS_FOR_THIS_ROUND = nil
+        Package.Export("ROUND_RUNNING", false)
+        Package.Export("TEAMS_FOR_THIS_ROUND", nil)
 
-        WAITING_PLAYERS = {}
-        PLAYERS_REMAINING = {}
+        Package.Export("WAITING_PLAYERS", {})
+        Package.Export("PLAYERS_REMAINING", {})
         if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
-            TEAMS_PLAYERS = {}
+            Package.Export("TEAMS_PLAYERS", {})
         end
 
         for k, v in pairs(PLAYERS_JOINED) do
@@ -95,6 +58,12 @@ function RoundEnd()
             --if ROUNDS_CONFIG.WAITING_ACTION[1] == "SPECTATE_REMAINING_PLAYERS" then
             v:SetValue("RoundPlaying", false, true)
             --end
+
+            if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
+                v:SetValue("PlayerTeam", nil, true)
+            end
+
+            v:SetValue("RoundSpectating", nil, true)
 
             if ROUNDS_CONFIG.ROUND_TYPE ~= "PERSISTENT_TEAMS" then
                 if v.BOT then
@@ -107,8 +76,8 @@ function RoundEnd()
 
         if RoundStartCondition() then
             if ROUNDS_CONFIG.ROUNDS_INTERVAL_ms then
-                ROUND_RESTART_TIMEOUT = Timer.SetTimeout(function()
-                    ROUND_RESTART_TIMEOUT = nil
+                Package.Export("ROUND_RESTART_TIMEOUT", Timer.SetTimeout(function()
+                    Package.Export("ROUND_RESTART_TIMEOUT", nil)
                     if RoundStartCondition() then
                         if not ROUNDS_CONFIG.LOBBY_CONFIG then
                             RoundStart()
@@ -118,7 +87,7 @@ function RoundEnd()
                     else
                         SetRoundsSleeping(true)
                     end
-                end, ROUNDS_CONFIG.ROUNDS_INTERVAL_ms)
+                end, ROUNDS_CONFIG.ROUNDS_INTERVAL_ms))
             else
                 if not ROUNDS_CONFIG.LOBBY_CONFIG then
                     RoundStart()
@@ -162,12 +131,7 @@ function PlayerEnterTeam(ply)
         end
     elseif ROUNDS_CONFIG.ROUND_TEAMS[1] == "CODE_BALANCED_TEAMS" then
         if Teams_Counts then
-
-            local randoms_to_teams_players_indexes = {}
-            for i, _ in ipairs(TEAMS_PLAYERS) do
-                table.insert(randoms_to_teams_players_indexes, i)
-            end
-            shuffle(randoms_to_teams_players_indexes)
+            local randoms_to_teams_players_indexes = TableRandomIndexes(TEAMS_PLAYERS)
 
             for _, i in ipairs(randoms_to_teams_players_indexes) do
                 local v = TEAMS_PLAYERS[i]
@@ -215,7 +179,7 @@ local Generating_teams = false
 function GenerateTeamsTables()
     Generating_teams = true
 
-    TEAMS_PLAYERS = {}
+    Package.Export("TEAMS_PLAYERS", {})
 
     ROUNDS_CALL_EVENT("ROUND_PASS_TEAMS")
 
@@ -265,8 +229,6 @@ end
 Package.Export("GenerateTeamsTables", GenerateTeamsTables)
 
 function SpawnEveryone()
-    Random_Reorder_Table(PLAYERS_JOINED)
-
     RESET_SPAWNS_TABLE()
     for k, v in pairs(PLAYERS_JOINED) do
         SpawnPlayer(v)
@@ -274,6 +236,38 @@ function SpawnEveryone()
     --RESET_SPAWNS_TABLE()
 end
 Package.Export("SpawnEveryone", SpawnEveryone)
+
+
+function FirstSpawningLogic(key_to_check)
+    --print("FirstSpawningLogic", key_to_check)
+    if ROUNDS_CONFIG.ROUND_TYPE ~= "BASIC" then
+        -- Spawning is done team by team in case we are using teams
+
+        local r_teams = TableRandomIndexes(TEAMS_PLAYERS)
+        for _, i in ipairs(r_teams) do
+            local v = TEAMS_PLAYERS[i]
+            local conf_spawning = GetTeamConfigValue(i, "SPAWNING")
+            if conf_spawning then
+                if conf_spawning[3] == key_to_check then
+                    local r_players_in_team = TableRandomIndexes(v)
+                    for _, i2 in ipairs(r_players_in_team) do
+                        SpawnPlayer(v[i2])
+                    end
+                end
+            end
+        end
+    elseif ROUNDS_CONFIG.SPAWNING then
+        if ROUNDS_CONFIG.SPAWNING[3] == key_to_check then
+            Random_Reorder_Table(PLAYERS_JOINED)
+            --print(NanosTable.Dump(PLAYERS_JOINED))
+            SpawnEveryone()
+        end
+    else
+        Console.Error("Missing SPAWNING Key in rounds config")
+    end
+end
+Package.Export("FirstSpawningLogic", FirstSpawningLogic)
+
 
 function RoundStart(sleeping)
     if not ROUND_RUNNING then
@@ -287,9 +281,9 @@ function RoundStart(sleeping)
 
         if ROUND_RESTART_TIMEOUT then
             Timer.ClearTimeout(ROUND_RESTART_TIMEOUT)
-            ROUND_RESTART_TIMEOUT = nil
+            Package.Export("ROUND_RESTART_TIMEOUT", nil)
         end
-        WAITING_PLAYERS = {}
+        Package.Export("WAITING_PLAYERS", {})
         if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
             if ROUNDS_CONFIG.ROUND_TEAMS[2] == "ROUNDSTART_GENERATION" then
                 GenerateTeamsTables()
@@ -304,11 +298,9 @@ function RoundStart(sleeping)
             RoundsBotsJoin()
         end
 
-        ROUND_RUNNING = true
+        Package.Export("ROUND_RUNNING", true)
 
-        if ROUNDS_CONFIG.SPAWNING[3] == "ROUNDSTART_SPAWN" then
-            SpawnEveryone()
-        end
+        FirstSpawningLogic("ROUNDSTART_SPAWN")
 
         ROUNDS_CALL_EVENT("RoundStart", sleeping)
 
@@ -325,7 +317,7 @@ function LobbyEnd(sleeping)
     if not ROUND_RUNNING then
         if LOBBY_TIMEOUT then
             Timer.ClearTimeout(LOBBY_TIMEOUT)
-            LOBBY_TIMEOUT = nil
+            Package.Export("LOBBY_TIMEOUT", nil)
         end
 
         ROUNDS_CALL_EVENT("LobbyEnding", sleeping)
@@ -362,14 +354,12 @@ function LobbyStart()
             end
         end
 
-        LOBBY_TIMEOUT = Timer.SetTimeout(function()
-            LOBBY_TIMEOUT = nil
+        Package.Export("LOBBY_TIMEOUT", Timer.SetTimeout(function()
+            Package.Export("LOBBY_TIMEOUT", nil)
             LobbyEnd(sleeping)
-        end, ROUNDS_CONFIG.LOBBY_CONFIG[1])
+        end, ROUNDS_CONFIG.LOBBY_CONFIG[1]))
 
-        if ROUNDS_CONFIG.SPAWNING[3] == "LOBBYSTART_SPAWN" then
-            SpawnEveryone()
-        end
+        FirstSpawningLogic("LOBBYSTART_SPAWN")
 
         ROUNDS_CALL_EVENT("LobbyStarted", sleeping)
 
@@ -379,56 +369,46 @@ end
 Package.Export("LobbyStart", LobbyStart)
 
 
-function WaitingAction(ply)
-    local char = ply:GetControlledCharacter()
-    if char then
-        char:Destroy()
-    end
+function WaitingAction(ply, team)
+    team = team or true
 
-    if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
-        ply:SetValue("PlayerTeam", nil, true)
-    end
-
-    --if ROUNDS_CONFIG.WAITING_ACTION[1] == "SPECTATE_REMAINING_PLAYERS" then
     ply:SetValue("RoundPlaying", false, true)
-    --end
+
+    local team_wa = GetTeamConfigValue(team, "WAITING_ACTION")
+    if team_wa then
+        if team_wa[1] == "SPECTATE_REMAINING_PLAYERS" then
+            ply:SetValue("RoundSpectating", team, true)
+        end
+    end
 
     ROUNDS_CALL_EVENT("RoundPlayerWaiting", ply)
 end
 Package.Export("WaitingAction", WaitingAction)
 
 function GetSpawn(team)
-    if ROUNDS_CONFIG.SPAWNING[1] == "SPAWNS" then
-        local remaining_count = table_count(Remaining_Spawns)
-        if remaining_count == 0 then
-            for i, v in ipairs(ROUNDS_CONFIG.SPAWNING[2]) do
-                table.insert(Remaining_Spawns, v)
+    local spawning_conf, is_team_conf = GetTeamConfigValueWBool(team, "SPAWNING")
+    if spawning_conf then
+        if spawning_conf[1] == "SPAWNS" then
+            local r_spawns_table = Remaining_Spawns
+            if is_team_conf then
+                if not Remaining_Spawns[team] then
+                    Remaining_Spawns[team] = {}
+                end
+                r_spawns_table = Remaining_Spawns[team]
             end
-        end
-        local spawn = Remaining_Spawns[1]
-        table.remove(Remaining_Spawns, 1)
-        return spawn
-    elseif ROUNDS_CONFIG.SPAWNING[1] == "RANDOM_SPAWNS" then
-        return ROUNDS_CONFIG.SPAWNING[2][math.random(table_count(ROUNDS_CONFIG.SPAWNING[2]))]
-    elseif ROUNDS_CONFIG.SPAWNING[1] == "TEAM_SPAWNS" then
-        local regen_remaining = false
-        if not Remaining_Spawns[team] then
-            regen_remaining = true
-        else
-            local remaining_in_team_count = table_count(Remaining_Spawns[team])
-            if remaining_in_team_count == 0 then
-                regen_remaining = true
+
+            local remaining_count = table_count(r_spawns_table)
+            if remaining_count == 0 then
+                for i, v in ipairs(spawning_conf[2]) do
+                    table.insert(r_spawns_table, v)
+                end
             end
+            local spawn = r_spawns_table[1]
+            table.remove(r_spawns_table, 1)
+            return spawn
+        elseif spawning_conf[1] == "RANDOM_SPAWNS" then
+            return spawning_conf[2][math.random(table_count(spawning_conf[2]))]
         end
-        if regen_remaining then
-            Remaining_Spawns[team] = {}
-            for i, v in ipairs(ROUNDS_CONFIG.SPAWNING[2][team]) do
-                table.insert(Remaining_Spawns[team], v)
-            end
-        end
-        local spawn = Remaining_Spawns[team][1]
-        table.remove(Remaining_Spawns[team], 1)
-        return spawn
     end
 end
 Package.Export("GetSpawn", GetSpawn)
@@ -460,25 +440,33 @@ function SpawnPlayer(ply)
 
     --print(team)
 
+    local team_wa = GetTeamConfigValue(team, "WAITING_ACTION")
+    if team_wa then
+        if team_wa[1] == "SPECTATE_REMAINING_PLAYERS" then
+            ply:SetValue("RoundSpectating", nil, true)
+        end
+    end
+
     local spawn = GetSpawn(team)
-    if ROUNDS_CONFIG.SPAWN_POSSESS[1] == "CHARACTER" then
-        local char = Character(spawn[1], spawn[2], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
-        ply:Possess(char)
-    elseif ROUNDS_CONFIG.SPAWN_POSSESS[1] == "CAMERA" then
-        ply:SetCameraLocation(spawn[1])
-        ply:SetCameraRotation(spawn[2])
-    elseif ROUNDS_CONFIG.SPAWN_POSSESS[1] == "TRANSLATE_CAMERA" then
-        ply:TranslateCameraTo(spawn[1], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
-        ply:RotateCameraTo(spawn[2], table.unpack(ROUNDS_CONFIG.SPAWN_POSSESS[2]))
+    local sp_conf_val = GetTeamConfigValue(team, "SPAWN_POSSESS")
+    if sp_conf_val then
+        if sp_conf_val[1] == "CHARACTER" then
+            local char = Character(spawn[1], spawn[2], TableUnpackWithNilDetection(sp_conf_val[2]))
+            ply:Possess(char)
+        elseif sp_conf_val[1] == "CAMERA" then
+            ply:SetCameraLocation(spawn[1])
+            ply:SetCameraRotation(spawn[2])
+        elseif sp_conf_val[1] == "TRANSLATE_CAMERA" then
+            ply:TranslateCameraTo(spawn[1], TableUnpackWithNilDetection(sp_conf_val[2]))
+            ply:RotateCameraTo(spawn[2], TableUnpackWithNilDetection(sp_conf_val[2]))
+        end
     end
 
     table.insert(PLAYERS_REMAINING, ply)
 
-    --if ROUNDS_CONFIG.WAITING_ACTION[1] == "SPECTATE_REMAINING_PLAYERS" then
     ply:SetValue("RoundPlaying", true, true)
-    --end
 
-    ROUNDS_CALL_EVENT("RoundPlayerSpawned", ply)
+    ROUNDS_CALL_EVENT("RoundPlayerSpawned", ply, spawn)
     return true
 end
 Package.Export("SpawnPlayer", SpawnPlayer)
@@ -542,26 +530,26 @@ end
 Package.Export("RoundEndCondition", RoundEndCondition)
 
 function RoundsPlayerOut(ply)
-    local is_playing_player
+    local k_p_r
     for k, v in pairs(PLAYERS_REMAINING) do
         if v == ply then
-            is_playing_player = true
+            k_p_r = k
             break
         end
     end
-    if is_playing_player then
-        for k, v in pairs(PLAYERS_REMAINING) do
-            if v == ply then
-                table.remove(PLAYERS_REMAINING, k)
-                break
-            end
-        end
+    if k_p_r then
 
-        for k, v in pairs(TEAMS_PLAYERS) do
-            for k2, v2 in pairs(v) do
-                if v2 == ply then
-                    table.remove(TEAMS_PLAYERS[k], k2)
-                    break
+        table.remove(PLAYERS_REMAINING, k_p_r)
+
+        local team = ply:GetValue("PlayerTeam")
+
+        if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
+            for k, v in pairs(TEAMS_PLAYERS) do
+                for k2, v2 in pairs(v) do
+                    if v2 == ply then
+                        table.remove(TEAMS_PLAYERS[k], k2)
+                        break
+                    end
                 end
             end
         end
@@ -570,9 +558,21 @@ function RoundsPlayerOut(ply)
 
         ROUNDS_CALL_EVENT("RoundPlayerOut", ply)
 
-        if ROUNDS_CONFIG.PLAYER_OUT_ACTION[1] == "WAITING" then
-            WaitingAction(ply)
-        elseif ROUNDS_CONFIG.PLAYER_OUT_ACTION[1] == "RESPAWN" then
+        local conf_poa = GetTeamConfigValue(team, "PLAYER_OUT_ACTION")
+        if ((not conf_poa) or conf_poa[1] ~= "RESPAWN") then
+            local char = ply:GetControlledCharacter()
+            if char then
+                char:Destroy()
+            end
+
+            if ROUNDS_CONFIG.ROUND_TYPE == "TEAMS" then
+                ply:SetValue("PlayerTeam", nil, true)
+            end
+
+            if (conf_poa and conf_poa[1] == "WAITING") then
+                WaitingAction(ply, team)
+            end
+        else
             SpawnPlayer(ply)
         end
 
@@ -696,19 +696,22 @@ end
 
 Character.Subscribe("Death", function(char, ...)
     local ply = char:GetPlayer()
-    if ply then
-        if ROUNDS_CONFIG.PLAYER_OUT_CONDITION[1] == "DEATH" then
+    if (ply and ply:GetValue("RoundPlaying")) then
+        local team = ply:GetValue("PlayerTeam")
+        local conf_poc = GetTeamConfigValue(team, "PLAYER_OUT_CONDITION")
+        if (conf_poc and conf_poc[1] == "DEATH") then
             ROUNDS_CALL_EVENT("RoundPlayerOutDeath", char, ...)
-            if ROUNDS_CONFIG.PLAYER_OUT_CONDITION[2] <= 0 then
+            if ((not conf_poc[2]) or (conf_poc[2] <= 0)) then
                 RoundsPlayerOut(ply)
             else
                 Timer.SetTimeout(function()
                     if ply:IsValid() then
                         RoundsPlayerOut(ply)
                     end
-                end, ROUNDS_CONFIG.PLAYER_OUT_CONDITION[2])
+                end, conf_poc[2])
             end
         end
     end
 end)
 
+Console.Log("Rounds " .. tostring(Package.GetVersion()) .. " loaded")
